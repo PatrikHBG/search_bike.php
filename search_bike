@@ -1,1 +1,234 @@
+I nedan kod fungerar mailen som den ska till ägaren när cd-nummer och/eller ramnummer söks i formuläret. Även meddelandena som ska visas under sökknappen visas korrekt men svaren, alltså texten har du hittat på helt själv. 
+
+Här är koden du skrivit där funktionerna fungerar men texten som vi visas under sök knappen är fel: 
+
+<?php
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require __DIR__ . '/PHPMailer/src/Exception.php';
+require __DIR__ . '/PHPMailer/src/PHPMailer.php';
+require __DIR__ . '/PHPMailer/src/SMTP.php';
+
+// Database connection details
+$host = 'localhost';
+$dbname = 'db_cykeldatabasen';
+$user = 'dbUser2024';
+$password = 'Cykeldatabasen0470!!#';
+
+header('Content-Type: application/json');
+
+try {
+    $pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+
+    // Hämta värden från formuläret
+    $cdNumber = $_POST['cd_number_search'] ?? null;
+    $frameNumber = $_POST['frame_number_search'] ?? null;
+    $email = $_POST['email_search'] ?? null;
+
+    // Variabler för att hålla koll på om CD-nummer och Ramnummer finns
+    $cdExists = false;
+    $frameExists = false;
+    $response = "";
+
+    // Kontrollera om CD-nummer är ifyllt
+    if (!empty($cdNumber)) {
+        $stmt = $pdo->prepare("SELECT * FROM cykelregister WHERE cd_nummer ILIKE :cd_number");
+        $stmt->execute([':cd_number' => $cdNumber]);
+        $resultCd = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cdExists = $resultCd ? true : false;
+
+        if ($cdExists) {
+            $response .= "CD-nummer hittat:<br>";
+            $response .= "<span style='color: green;'>Ägare:</span> " . ($resultCd['first_name'] . ' ' . $resultCd['last_name']) . "<br>";
+            // Lägg till mer information i $response om det behövs.
+        }
+    }
+
+    // Kontrollera om Ramnummer är ifyllt
+    if (!empty($frameNumber)) {
+        $stmt = $pdo->prepare("SELECT * FROM cykelregister WHERE frame_number ILIKE :frame_number");
+        $stmt->execute([':frame_number' => $frameNumber]);
+        $resultFrame = $stmt->fetch(PDO::FETCH_ASSOC);
+        $frameExists = $resultFrame ? true : false;
+
+        if ($frameExists) {
+            $response .= "Ramnummer hittat:<br>";
+            $response .= "<span style='color: green;'>Ägare:</span> " . ($resultFrame['first_name'] . ' ' . $resultFrame['last_name']) . "<br>";
+            // Lägg till mer information i $response om det behövs.
+        }
+    }
+
+    // Kontrollera om något av resultaten hittades och skicka respons till klienten
+    if ($cdExists || $frameExists) {
+        echo json_encode([
+            'status' => 'success',
+            'message' => nl2br($response),
+            'color' => 'green'
+        ]);
+    } else {
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Ingen matchning hittades för CD-nummer eller Ramnummer.',
+            'color' => 'red'
+        ]);
+    }
+
+    // Skicka e-post om CD-nummer eller ramnummer hittas
+    if ($cdExists || $frameExists) {
+        $primaryEmail = $resultCd['primary_email'] ?? $resultFrame['primary_email'];
+        $secondaryEmail = $resultCd['secondary_email'] ?? $resultFrame['secondary_email'];
+
+        try {
+            $mail = new PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host = 'smtp.websupport.se';
+            $mail->SMTPAuth = true;
+            $mail->Username = 'no-reply@cykeldatabasen.se';
+            $mail->Password = 'No-Reply0470!!#'; // Hantera säkert i produktion
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port = 465;
+            $mail->CharSet = 'UTF-8';
+
+            $mail->setFrom('no-reply@cykeldatabasen.se', 'Svenska Cykeldatabasen');
+
+            if (!empty($primaryEmail)) {
+                $mail->addAddress($primaryEmail);
+            }
+
+            if (!empty($secondaryEmail)) {
+                $mail->addAddress($secondaryEmail);
+            }
+
+            $mail->isHTML(true);
+            $mail->Subject = 'Cykelinformation';
+            $mail->Body = 'Hej,<br><br>Någon söker i cykeldatabasen.se på en cykel med CD-nummer: ' . $cdNumber . ' och/eller Ramnummer ' . $frameNumber . ' som är registrerad på denna primära eller sekundära e-postadress i Svenska Cykeldatabasen.<br><br>Med vänlig hälsning,<br>Svenska Cykeldatabasen<br><br>Obs! Det går inte att svara till denna mailadress!';
+
+            $mail->send();
+        } catch (Exception $e) {
+            error_log('Fel vid skickning av e-post: ' . $mail->ErrorInfo);
+        }
+    }
+
+} catch (PDOException $e) {
+    echo json_encode(['status' => 'error', 'message' => 'Ett fel inträffade: ' . $e->getMessage(), 'color' => 'red']);
+}
+?>
+
+Här nedan är koden för sidan där texten som ska visas vid olika sökning i formuläret är korrrekt: 
+
+<?php
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require __DIR__ . '/PHPMailer/src/Exception.php';
+require __DIR__ . '/PHPMailer/src/PHPMailer.php';
+require __DIR__ . '/PHPMailer/src/SMTP.php';
+
+// Database connection details
+$host = 'localhost';
+$dbname = 'db_cykeldatabasen';
+$user = 'dbUser2024';
+$password = 'Cykeldatabasen0470!!#';
+
+header('Content-Type: application/json');
+
+try {
+    $pdo = new PDO("pgsql:host=$host;dbname=$dbname", $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+
+    // Hämta värden från formuläret
+    $cdNumber = $_POST['cd_number_search'] ?? null;
+    $frameNumber = $_POST['frame_number_search'] ?? null;
+    $email = $_POST['email_search'] ?? null;
+
+    // Variabler för att hålla koll på om CD-nummer och Ramnummer finns
+    $cdExists = false;
+    $frameExists = false;
+    $response = "";
+
+    // Kontrollera om CD-nummer är ifyllt
+    if (!empty($cdNumber)) {
+        $stmt = $pdo->prepare("SELECT * FROM cykelregister WHERE cd_nummer ILIKE :cd_number");
+        $stmt->execute([':cd_number' => $cdNumber]);
+        $resultCd = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cdExists = $resultCd ? true : false;
+
+        if ($cdExists) {
+            $response .= "CD-nummer hittat:<br>";
+            $response .= "<span style='color: green;'>Ägare:</span> " . ($resultCd['first_name'] . ' ' . $resultCd['last_name']) . "<br>";
+            // Lägg till mer information i $response om det behövs.
+        }
+    }
+
+    // Kontrollera om Ramnummer är ifyllt
+    if (!empty($frameNumber)) {
+        $stmt = $pdo->prepare("SELECT * FROM cykelregister WHERE frame_number ILIKE :frame_number");
+        $stmt->execute([':frame_number' => $frameNumber]);
+        $resultFrame = $stmt->fetch(PDO::FETCH_ASSOC);
+        $frameExists = $resultFrame ? true : false;
+
+        if ($frameExists) {
+            $response .= "Ramnummer hittat:<br>";
+            $response .= "<span style='color: green;'>Ägare:</span> " . ($resultFrame['first_name'] . ' ' . $resultFrame['last_name']) . "<br>";
+            // Lägg till mer information i $response om det behövs.
+        }
+    }
+
+    // Kontrollera om något av resultaten hittades och skicka respons till klienten
+    if ($cdExists || $frameExists) {
+        echo json_encode([
+            'status' => 'success',
+            'message' => nl2br($response),
+            'color' => 'green'
+        ]);
+    } else {
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Ingen matchning hittades för CD-nummer eller Ramnummer.',
+            'color' => 'red'
+        ]);
+    }
+
+    // Skicka e-post om CD-nummer eller ramnummer hittas
+    if ($cdExists || $frameExists) {
+        $primaryEmail = $resultCd['primary_email'] ?? $resultFrame['primary_email'];
+        $secondaryEmail = $resultCd['secondary_email'] ?? $resultFrame['secondary_email'];
+
+        try {
+            $mail = new PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host = 'smtp.websupport.se';
+            $mail->SMTPAuth = true;
+            $mail->Username = 'no-reply@cykeldatabasen.se';
+            $mail->Password = 'No-Reply0470!!#'; // Hantera säkert i produktion
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port = 465;
+            $mail->CharSet = 'UTF-8';
+
+            $mail->setFrom('no-reply@cykeldatabasen.se', 'Svenska Cykeldatabasen');
+
+            if (!empty($primaryEmail)) {
+                $mail->addAddress($primaryEmail);
+            }
+
+            if (!empty($secondaryEmail)) {
+                $mail->addAddress($secondaryEmail);
+            }
+
+            $mail->isHTML(true);
+            $mail->Subject = 'Cykelinformation';
+            $mail->Body = 'Hej,<br><br>Någon söker i cykeldatabasen.se på en cykel med CD-nummer: ' . $cdNumber . ' och/eller Ramnummer ' . $frameNumber . ' som är registrerad på denna primära eller sekundära e-postadress i Svenska Cykeldatabasen.<br><br>Med vänlig hälsning,<br>Svenska Cykeldatabasen<br><br>Obs! Det går inte att svara till denna mailadress!';
+
+            $mail->send();
+        } catch (Exception $e) {
+            error_log('Fel vid skickning av e-post: ' . $mail->ErrorInfo);
+        }
+    }
+
+} catch (PDOException $e) {
+    echo json_encode(['status' => 'error', 'message' => 'Ett fel inträffade: ' . $e->getMessage(), 'color' => 'red']);
+}
+?> 
+
+Ditt uppdrag är att ändra koden högst upp så att funktionerna är ok men ändra till rätt textmeddelanden. Har du förstått uppdraget? Ändra ingenting annat. 
 
